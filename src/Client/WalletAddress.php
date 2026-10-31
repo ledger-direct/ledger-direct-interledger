@@ -30,15 +30,37 @@ final readonly class WalletAddress
                 throw new InvalidArgumentException("A wallet address is missing '{$field}'.");
             }
         }
+
+        /*
+         * The two servers come out of the wallet address document, and every
+         * later request goes to them carrying the merchant's signature or an
+         * access token. A document that names a plain-http server is not one
+         * to follow — Open Payments is https throughout.
+         */
+        foreach (['id' => $id, 'authServer' => $authServer, 'resourceServer' => $resourceServer] as $field => $value) {
+            if (!str_starts_with($value, 'https://')) {
+                throw new InvalidArgumentException("A wallet address's '{$field}' must be an https URL, got '{$value}'.");
+            }
+        }
+
+        if ($assetScale < 0) {
+            throw new InvalidArgumentException("A wallet address's asset scale cannot be negative, got {$assetScale}.");
+        }
     }
 
     /** @param array<string, mixed> $data the wallet address document */
     public static function fromArray(array $data): self
     {
+        // The scale is not optional: a missing one read as 0 would turn every
+        // amount into whole units, and 130 cents into 130 euro.
+        if (!isset($data['assetScale'])) {
+            throw new InvalidArgumentException("A wallet address is missing 'assetScale'.");
+        }
+
         return new self(
             id: (string) ($data['id'] ?? ''),
             assetCode: (string) ($data['assetCode'] ?? ''),
-            assetScale: (int) ($data['assetScale'] ?? 0),
+            assetScale: (int) $data['assetScale'],
             authServer: (string) ($data['authServer'] ?? ''),
             resourceServer: (string) ($data['resourceServer'] ?? ''),
             publicName: (string) ($data['publicName'] ?? ''),

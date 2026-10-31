@@ -34,6 +34,13 @@ use Throwable;
  * the wallet is not configured as a client of its own address, and is
  * reported as such rather than retried.
  *
+ * **No request timeout.** The SDK builds its Guzzle client inside the method
+ * that sends the request and takes no options, so there is nothing to set a
+ * timeout on from here: a wallet that accepts a connection and then goes
+ * quiet holds the request until PHP's own limit. It is the reason the status
+ * endpoint's read is behind the core's SyncThrottle and reads a failure as
+ * "nothing has arrived yet". Fixing it properly means an option upstream.
+ *
  * **Where the token is kept.** In the process by default, which costs one
  * extra grant request per web request. A payment page that polls every
  * five seconds is worth more than that, so a PSR-16 cache can be passed
@@ -132,11 +139,27 @@ final class SdkOpenPaymentsClient implements OpenPaymentsInterface
             throw OpenPaymentsException::from('creating an incoming payment', $exception);
         }
 
-        return $this->map($created->id, $created);
+        return $this->mapOrFail($created->id, $created);
     }
 
     public function incomingPayment(string $url): IncomingPayment
     {
+        /*
+         * The URL comes out of the order's record, and the request carries the
+         * merchant's access token. So it has to be one of this wallet's own
+         * resources before the token goes anywhere: a record that points
+         * somewhere else — a wallet address the merchant has since changed, or
+         * a tampered record — must not hand the token to that host. The
+         * caller reads this as "nothing has arrived", which is the truth.
+         */
+        $resourceServer = rtrim($this->walletAddress()->resourceServer, '/') . '/';
+
+        if (!str_starts_with($url, $resourceServer)) {
+            throw new OpenPaymentsException(
+                "The incoming payment {$url} is not a resource of {$this->walletAddressUrl}; not reading it."
+            );
+        }
+
         try {
             $payment = $this->sdk()->incomingPayment()->get([
                 'url' => $url,
@@ -146,13 +169,21 @@ final class SdkOpenPaymentsClient implements OpenPaymentsInterface
             throw OpenPaymentsException::from("reading the incoming payment {$url}", $exception);
         }
 
-        return $this->map($url, $payment);
+        return $this->mapOrFail($url, $payment);
     }
 
     public function assertKeyRegistered(): void
     {
         try {
-            $keys = $this->sdk()->walletAddress()->getKeys(['url' => $this->walletAddressUrl]);
+            /*
+             * A fresh client, not the memoised one: `jwks.json` is public, and the
+             * SDK's client keeps an access token once it has been set, so the
+             * shared one would send the merchant's grant token to a route that
+             * does not need it.
+             */
+            $keys = ($this->authClientFactory)($this->walletAddressUrl, $this->credentials)
+                ->walletAddress()
+                ->getKeys(['url' => $this->walletAddressUrl]);
         } catch (Throwable $exception) {
             throw OpenPaymentsException::from("reading the keys of {$this->walletAddressUrl}", $exception);
         }
@@ -304,6 +335,22 @@ final class SdkOpenPaymentsClient implements OpenPaymentsInterface
     private function sdk(): AuthClient
     {
         return $this->authClient ??= ($this->authClientFactory)($this->walletAddressUrl, $this->credentials);
+    }
+
+    /**
+     * The mapping, with anything malformed in the response reported as this
+     * package's own failure: an amount the value objects refuse is a bad
+     * answer from the wallet, not a programming error in the caller.
+     */
+    private function mapOrFail(string $url, IncomingPaymentWithPaymentMethods|SdkIncomingPayment $payment): IncomingPayment
+    {
+        try {
+            return $this->map($url, $payment);
+        } catch (OpenPaymentsException $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            throw OpenPaymentsException::from("reading the incoming payment {$url}", $exception);
+        }
     }
 
     /**

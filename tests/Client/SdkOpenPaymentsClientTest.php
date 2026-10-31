@@ -38,6 +38,10 @@ final class SdkOpenPaymentsClientTest extends TestCase
 
     private const KEY_ID = '4a1f0d6e-7c3b-4a52-9a2e-1b8c5d0f9e77';
 
+    /** A resource of the wallet in the fixture, which is what the client will read. */
+    private const INCOMING_PAYMENT = 'https://ilp.interledger-test.dev/f537937b-7016-481b-b655-9f0d1014822c'
+        . '/incoming-payments/cc294351-d4e2-411e-ae25-14b5118c8776';
+
     private WalletAddressService $walletService;
 
     private SdkIncomingPaymentService $incomingPayments;
@@ -119,14 +123,30 @@ final class SdkOpenPaymentsClientTest extends TestCase
         $this->incomingPayments->method('get')
             ->willReturn(new IncomingPaymentWithPaymentMethods($this->fixture('incoming-payment-completed')));
 
-        $payment = $this->client()->incomingPayment(
-            'https://ilp.interledger-test.dev/f537937b/incoming-payments/cc294351-d4e2-411e-ae25-14b5118c8776'
-        );
+        $payment = $this->client()->incomingPayment(self::INCOMING_PAYMENT);
 
         self::assertTrue($payment->completed);
         self::assertTrue($payment->hasReceived());
         self::assertSame('1.30', $payment->receivedAmount?->decimal());
         self::assertSame('cc294351-d4e2-411e-ae25-14b5118c8776', $payment->paymentId());
+    }
+
+    /**
+     * The URL comes out of the order's record and the read carries the
+     * merchant's token, so a record that points at another host is refused
+     * before the token goes anywhere.
+     */
+    public function testAPaymentUrlOutsideThisWalletIsNotRead(): void
+    {
+        $this->expectGrant();
+        $this->incomingPayments->method('get')->willReturnCallback(static function (): never {
+            self::fail('a foreign URL must not be requested at all');
+        });
+
+        $this->expectException(OpenPaymentsException::class);
+        $this->expectExceptionMessageMatches('/not a resource of/');
+
+        $this->client()->incomingPayment('https://wallet.example.invalid/incoming-payments/cc294351');
     }
 
     public function testTheGrantIsAskedForOnceAndThenReused(): void

@@ -41,7 +41,13 @@ $stateFile = __DIR__ . '/state.json';
 $state = is_file($stateFile) ? json_decode(file_get_contents($stateFile), true) : [];
 $t0 = microtime(true);
 $log = static fn (string $m) => fwrite(STDOUT, sprintf("[%5.1fs] %s\n", microtime(true) - $t0, $m));
-$save = static function (array $s) use ($stateFile): void { file_put_contents($stateFile, json_encode($s, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)); };
+// The state file holds grant tokens: it is written for this user only, and the
+// permissions are set before the content, so there is no readable moment.
+$save = static function (array $s) use ($stateFile): void {
+    if (!is_file($stateFile)) { touch($stateFile); }
+    chmod($stateFile, 0600);
+    file_put_contents($stateFile, json_encode($s, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+};
 $fixture = static function (string $name, mixed $data): void {
     @mkdir(__DIR__ . '/fixtures');
     file_put_contents(__DIR__ . "/fixtures/$name.json", json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -75,7 +81,8 @@ switch ($step) {
         if (!$grant instanceof \OpenPayments\Models\Grant) { throw new RuntimeException('incoming-payment grant unexpectedly interactive'); }
         $log('incoming-payment grant: non-interactive, token received');
         $reference = random_int(100000, 999999);
-        $expiresAt = (new DateTimeImmutable('+30 minutes'))->format('Y-m-d\TH:i:s.v\Z');
+        // In UTC, because the format says Z: a local time labelled Z is off by the offset.
+        $expiresAt = (new DateTimeImmutable('+30 minutes', new DateTimeZone('UTC')))->format('Y-m-d\TH:i:s.v\Z');
         $incoming = $op->incomingPayment()->create(['url' => $wallet->resourceServer, 'access_token' => $grant->access_token->value], [
             'walletAddress' => $config->getWalletAddressUrl(),
             'incomingAmount' => ['value' => '130', 'assetCode' => $wallet->assetCode, 'assetScale' => $wallet->assetScale],

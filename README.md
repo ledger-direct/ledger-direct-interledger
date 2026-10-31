@@ -77,6 +77,10 @@ derives `waiting` / `partial` / `settled`, and every adapter reads the record it
   transaction to link. The incoming payment URL is the evidence.
 - **No browser wallet** on the payment page, and `wrong_asset` cannot occur by construction (an incoming payment
   has exactly one asset).
+- **No request timeout.** The SDK builds its HTTP client inside the method that sends the request and takes no
+  options, so a wallet that accepts a connection and then goes quiet holds the request until PHP's own limit.
+  The core's `SyncThrottle` keeps a status endpoint to one read per interval, and a failed read means "nothing
+  has arrived yet", but the real fix is an option upstream.
 
 ## Tests
 
