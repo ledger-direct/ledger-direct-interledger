@@ -1,0 +1,8 @@
+{
+  "id": "https://ilp.interledger-test.dev/ld-merchant",
+  "publicName": "ld-merchant",
+  "assetCode": "EUR",
+  "assetScale": 2,
+  "authServer": "https://auth.interledger-test.dev/f537937b-7016-481b-b655-9f0d1014822c",
+  "resourceServer": "https://ilp.interledger-test.dev/f537937b-7016-481b-b655-9f0d1014822c"
+}
