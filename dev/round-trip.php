@@ -113,7 +113,17 @@ switch ($step) {
             'interact' => ['start' => ['redirect'], 'finish' => ['method' => 'redirect', 'uri' => 'https://localhost/ledger-direct-p0?order=10001', 'nonce' => $nonce]],
         ]);
         if (!$opGrant instanceof \OpenPayments\Models\PendingGrant) { throw new RuntimeException('outgoing-payment grant was not interactive'); }
-        $state['customer'] = ['quote_url' => $quote->id, 'continue_token' => $opGrant->continue->access_token->value, 'continue_uri' => $opGrant->continue->uri, 'nonce' => $nonce, 'resource_server' => $wallet->resourceServer];
+        // The nonces and the grant endpoint are what the interaction hash is computed over
+        // when the browser comes back (GNAP, RFC 9635 §4.2.3), so they have to survive the step.
+        $state['customer'] = [
+            'quote_url' => $quote->id,
+            'continue_token' => $opGrant->continue->access_token->value,
+            'continue_uri' => $opGrant->continue->uri,
+            'nonce' => $nonce,
+            'as_nonce' => $opGrant->interact->finish,
+            'grant_url' => $wallet->authServer,
+            'resource_server' => $wallet->resourceServer,
+        ];
         $save($state);
         $log('outgoing-payment grant is pending. APPROVE HERE, then paste the URL the browser lands on:');
         fwrite(STDOUT, "\n    {$opGrant->interact->redirect}\n\n");
@@ -123,12 +133,46 @@ switch ($step) {
         $redirect = $argv[2] ?? throw new RuntimeException('pass the redirect URL');
         parse_str((string) parse_url($redirect, PHP_URL_QUERY), $q);
         $interactRef = $q['interact_ref'] ?? throw new RuntimeException('no interact_ref in the URL');
+        $customer = $state['customer'] ?? throw new RuntimeException('run customer-grant first');
+        /*
+         * The redirect's `hash` is the authorization server's proof that this
+         * callback belongs to the grant we asked for: SHA-256 over the client
+         * nonce, the AS nonce, interact_ref and the grant endpoint,
+         * newline-separated (GNAP, RFC 9635 §4.2.3).
+         *
+         * Every candidate is accepted, because servers disagree on two details
+         * and getting either wrong would reject a perfectly good callback. The
+         * SDK posts the grant request with a trailing slash, and the Interledger
+         * test wallet sends standard padded base64 where the specification says
+         * URL-safe and unpadded.
+         */
+        $hash = $q['hash'] ?? throw new RuntimeException('no hash in the URL');
+        $expected = [];
+
+        foreach ([$customer['grant_url'], rtrim($customer['grant_url'], '/') . '/'] as $grantUrl) {
+            $digest = hash(
+                'sha256',
+                implode("\n", [$customer['nonce'], $customer['as_nonce'], $interactRef, $grantUrl]),
+                true,
+            );
+            $expected[] = base64_encode($digest);
+            $expected[] = rtrim(strtr(base64_encode($digest), '+/', '-_'), '=');
+        }
+
+        if (!in_array($hash, $expected, true)) {
+            throw new RuntimeException(
+                "the interaction hash does not match: the server sent '{$hash}', this grant expects one of '"
+                . implode("', '", array_unique($expected)) . "'"
+            );
+        }
+
+        $log('interaction hash verified');
         [$op, $config, $wallet] = $client('customer');
-        $grant = $op->grant()->continue(['access_token' => $state['customer']['continue_token'], 'url' => $state['customer']['continue_uri']], ['interact_ref' => $interactRef]);
+        $grant = $op->grant()->continue(['access_token' => $customer['continue_token'], 'url' => $customer['continue_uri']], ['interact_ref' => $interactRef]);
         if (!$grant instanceof \OpenPayments\Models\Grant) { throw new RuntimeException('grant not finalized'); }
         $log('outgoing-payment grant finalized');
         $outgoing = $op->outgoingPayment()->create(['url' => $wallet->resourceServer, 'access_token' => $grant->access_token->value], [
-            'walletAddress' => $config->getWalletAddressUrl(), 'quoteId' => $state['customer']['quote_url'],
+            'walletAddress' => $config->getWalletAddressUrl(), 'quoteId' => $customer['quote_url'],
             'metadata' => ['description' => 'LedgerDirect P0 order 10001'],
         ]);
         $fixture('outgoing-payment-created', $outgoing);
@@ -139,13 +183,17 @@ switch ($step) {
 
     case 'merchant-poll':
         [$op, $config, $wallet] = $client('merchant');
-        $url = $state['merchant']['incoming_payment_url'];
+        $url = $state['merchant']['incoming_payment_url'] ?? throw new RuntimeException('run merchant-request first');
+        $completed = false;
         for ($i = 0; $i < 20; $i++) {
             $ip = $op->incomingPayment()->get(['url' => $url, 'access_token' => $state['merchant']['access_token']]);
             $log("received {$ip->receivedAmount->value}/{$ip->incomingAmount->value} {$ip->receivedAmount->assetCode} completed=" . var_export($ip->completed, true));
-            if ($ip->completed || $ip->receivedAmount->value >= $ip->incomingAmount->value) { $fixture('incoming-payment-completed', $ip); break; }
+            if ($ip->completed || $ip->receivedAmount->value >= $ip->incomingAmount->value) { $fixture('incoming-payment-completed', $ip); $completed = true; break; }
             sleep(3);
         }
+        // A round trip that never arrived is not a successful run: say so with the exit code,
+        // or a demo looks like it worked because nothing complained.
+        if (!$completed) { throw new RuntimeException('the incoming payment did not complete within 20 polls'); }
         break;
 
     default:

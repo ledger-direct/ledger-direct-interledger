@@ -98,7 +98,7 @@ the one Open Payments makes interactive), pays, and the merchant polls until it 
 ```bash
 php dev/round-trip.php merchant-request         # the incoming payment
 php dev/round-trip.php customer-grant           # prints the URL to approve
-php dev/round-trip.php customer-pay <redirect>  # the URL the browser landed on
+php dev/round-trip.php customer-pay '<redirect>'  # the URL the browser landed on, in quotes
 php dev/round-trip.php merchant-poll
 ```
 
