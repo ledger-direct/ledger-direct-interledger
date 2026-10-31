@@ -89,6 +89,23 @@ No network, no wallet, no test money: the services run against `Testing\FakeOpen
 that talks to the SDK is tested against the responses recorded from the test wallet, with its request body
 checked against the Open Payments schema the SDK ships.
 
+## Against a real wallet
+
+`dev/round-trip.php` does one round trip by hand, both sides, without a shop: the merchant creates the
+incoming payment, the customer quotes it, approves the outgoing payment in the browser (that grant is
+the one Open Payments makes interactive), pays, and the merchant polls until it is completed.
+
+```bash
+php dev/round-trip.php merchant-request         # the incoming payment
+php dev/round-trip.php customer-grant           # prints the URL to approve
+php dev/round-trip.php customer-pay <redirect>  # the URL the browser landed on
+php dev/round-trip.php merchant-poll
+```
+
+It needs two accounts with developer keys at an Open Payments wallet, as
+`LEDGERDIRECT_INTERLEDGER_TESTNET_{MERCHANT,CUSTOMER}_{WALLET_ADDRESS,KEY_ID,PRIVATE_KEY}` in the
+environment. The responses under `tests/fixtures/` were recorded with it, scrubbed.
+
 ## Licence
 
 MIT.

@@ -1,4 +1,6 @@
 /vendor/
+/dev/state.json
+/dev/fixtures/
 /composer.lock
 /.phpunit.cache/
 /var/
