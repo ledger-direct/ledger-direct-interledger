@@ -217,11 +217,13 @@ final class IncomingPaymentService
             $priced = $this->priceService->quoteAmount($total, $quoteCurrency, $assetCode, $network);
         } catch (InvalidArgumentException | PriceUnavailableException $exception) {
             throw new NoPriceForAssetException(sprintf(
-                'No rate for %s/%s: an Interledger wallet in %s can only take %s orders in this prototype (%s).',
+                'No rate for %s/%s: in this prototype an Interledger wallet in %s takes orders in %s (%s).',
                 $assetCode,
                 $quoteCurrency,
                 $assetCode,
-                $assetCode,
+                $peg === null || strtoupper($peg) === strtoupper($assetCode)
+                    ? strtoupper($assetCode)
+                    : strtoupper($assetCode) . ' or ' . strtoupper($peg),
                 $exception->getMessage(),
             ), 0, $exception);
         }
