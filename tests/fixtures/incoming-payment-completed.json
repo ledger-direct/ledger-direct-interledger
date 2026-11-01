@@ -1,0 +1,23 @@
+{
+  "id": "https://ilp.interledger-test.dev/f537937b-7016-481b-b655-9f0d1014822c/incoming-payments/cc294351-d4e2-411e-ae25-14b5118c8776",
+  "walletAddress": "https://ilp.interledger-test.dev/ld-merchant",
+  "completed": true,
+  "incomingAmount": {
+    "value": "130",
+    "assetCode": "EUR",
+    "assetScale": 2
+  },
+  "receivedAmount": {
+    "value": "130",
+    "assetCode": "EUR",
+    "assetScale": 2
+  },
+  "expiresAt": "2026-10-31T21:59:06.523Z",
+  "metadata": {
+    "description": "LedgerDirect P0 order 10001",
+    "externalRef": "LD-494349"
+  },
+  "createdAt": "2026-10-31T21:29:06.890Z",
+  "updatedAt": "",
+  "methods": []
+}
