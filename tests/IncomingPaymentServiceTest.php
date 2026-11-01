@@ -180,6 +180,24 @@ final class IncomingPaymentServiceTest extends TestCase
         self::assertCount(1, $wallet->created);
     }
 
+    /**
+     * Dassie's testnet dollar is worth a dollar and no oracle has a rate for
+     * it, so a USD order is quoted at par from the peg the chain declares.
+     */
+    public function testAPeggedAssetIsQuotedAtParAgainstItsPegCurrency(): void
+    {
+        $wallet = new FakeOpenPayments(self::WALLET, 'DSUSD', 2);
+        $intent = $this->service($wallet)->quoteForOrder(19.99, 'USD', 'DSUSD');
+
+        self::assertSame(1.0, $intent->exchangeRate);
+        self::assertSame('DSUSD/USD', $intent->pairing);
+        self::assertSame(
+            ['currency' => 'DSUSD', 'value' => '19.99', 'issuer' => self::WALLET],
+            $intent->amountRequested,
+        );
+        self::assertSame('1999', $wallet->created[0]['amount']->value);
+    }
+
     public function testAWalletInAnotherCurrencyThanTheShopIsAKnownGap(): void
     {
         $this->expectException(NoPriceForAssetException::class);

@@ -88,6 +88,14 @@ final class ChainTest extends TestCase
         self::assertSame([], $descriptor->asset('EUR')->issuers, 'the issuer is the merchant\'s own wallet');
     }
 
+    public function testThePegIsReadFromTheDescriptor(): void
+    {
+        self::assertSame('EUR', Chain::pegCurrencyFor('EUR'));
+        self::assertSame('USD', Chain::pegCurrencyFor('dsusd'), 'Dassie\'s testnet dollar is worth a dollar');
+        self::assertNull(Chain::pegCurrencyFor('XRP'), 'XRP is worth what the oracles say');
+        self::assertNull(Chain::pegCurrencyFor('RLUSD'), 'an asset this chain does not list is priced like any other');
+    }
+
     public function testTheDescriptorAcceptsAWalletAddressAndRefusesALedgerAccount(): void
     {
         $descriptor = Chain::descriptor();

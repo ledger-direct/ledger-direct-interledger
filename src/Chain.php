@@ -120,6 +120,20 @@ final class Chain
     }
 
     /**
+     * The quote currency an asset is pegged to, or null when it has none and
+     * has to be priced. `DSUSD` is Dassie's testnet dollar and worth a dollar;
+     * `XRP` is worth what the oracles say. Null for an asset this chain does
+     * not list, which is then priced like any other.
+     */
+    public static function pegCurrencyFor(string $assetCode): ?string
+    {
+        $code = strtoupper($assetCode);
+        $descriptor = self::descriptor();
+
+        return $descriptor->hasAsset($code) ? $descriptor->asset($code)->pegCurrency : null;
+    }
+
+    /**
      * The opaque id at the end of an incoming payment URL — what the
      * record carries as `hash` once something has arrived. Open Payments
      * has no transaction hash, and this is the closest thing that

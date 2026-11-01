@@ -188,23 +188,33 @@ final class IncomingPaymentService
     /**
      * The rate and the amount to ask for.
      *
-     * Same code on both sides is a 1:1 peg and costs no oracle call — a
-     * EUR wallet taking a EUR order is the prototype's main case, and the
-     * wallet provider's balance *is* that currency. Otherwise the core's
-     * oracles are asked, which covers XRP and nothing else that an
-     * Interledger wallet is likely to hold: fiat-to-fiat conversion is a
-     * known gap of the prototype (handover §7, item 7).
+     * A balance that is the shop's currency is a 1:1 peg and costs no oracle
+     * call — a EUR wallet taking a EUR order is the prototype's main case, and
+     * the wallet provider's balance *is* that currency. So is an asset the
+     * chain declares as pegged to it, which is how Dassie's DSUSD prices a USD
+     * order. Otherwise the core's oracles are asked, which covers XRP and
+     * nothing else an Interledger wallet is likely to hold: fiat-to-fiat
+     * conversion is a known gap of the prototype (handover §7, item 7).
      *
      * @return array{0: float, 1: string} the rate and the decimal amount
      */
     private function rateAndAmount(float $total, string $quoteCurrency, string $assetCode, string $network): array
     {
-        if (strtoupper($assetCode) === strtoupper($quoteCurrency)) {
+        $quote = strtoupper($quoteCurrency);
+        $peg = Chain::pegCurrencyFor($assetCode);
+
+        /*
+         * 1:1 when the wallet's balance *is* the shop's currency: the same code
+         * on both sides, or an asset the chain declares as pegged to it. Dassie's
+         * DSUSD is the case that needs the second half — it is worth a dollar but
+         * is not called USD, and no oracle has a rate for it.
+         */
+        if (strtoupper($assetCode) === $quote || ($peg !== null && strtoupper($peg) === $quote)) {
             return [1.0, (string) $total];
         }
 
         try {
-            $quote = $this->priceService->quoteAmount($total, $quoteCurrency, $assetCode, $network);
+            $priced = $this->priceService->quoteAmount($total, $quoteCurrency, $assetCode, $network);
         } catch (InvalidArgumentException | PriceUnavailableException $exception) {
             throw new NoPriceForAssetException(sprintf(
                 'No rate for %s/%s: an Interledger wallet in %s can only take %s orders in this prototype (%s).',
@@ -216,6 +226,6 @@ final class IncomingPaymentService
             ), 0, $exception);
         }
 
-        return [$quote->exchangeRate, $quote->amount];
+        return [$priced->exchangeRate, $priced->amount];
     }
 }
