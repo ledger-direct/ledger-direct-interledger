@@ -146,15 +146,20 @@ final class SdkOpenPaymentsClient implements OpenPaymentsInterface
     {
         /*
          * The URL comes out of the order's record, and the request carries the
-         * merchant's access token. So it has to be one of this wallet's own
-         * resources before the token goes anywhere: a record that points
-         * somewhere else — a wallet address the merchant has since changed, or
-         * a tampered record — must not hand the token to that host. The
-         * caller reads this as "nothing has arrived", which is the truth.
+         * merchant's access token. So it has to belong to this wallet before
+         * the token goes anywhere: a record that points somewhere else — a
+         * wallet address the merchant has since changed, or a tampered record
+         * — must not hand the token to that host. The caller reads the refusal
+         * as "nothing has arrived", which is the truth.
+         *
+         * The comparison is the **origin** of the resource server, not its
+         * path: Open Payments does not promise that an incoming payment lives
+         * under the advertised path, and its own example advertises
+         * `https://host/op` while handing out `https://host/incoming-payments/…`.
+         * A path check would refuse that, and a refused read means a paid order
+         * that never settles — worse than what the check is there to prevent.
          */
-        $resourceServer = rtrim($this->walletAddress()->resourceServer, '/') . '/';
-
-        if (!str_starts_with($url, $resourceServer)) {
+        if (!self::isSameOrigin($this->walletAddress()->resourceServer, $url)) {
             throw new OpenPaymentsException(
                 "The incoming payment {$url} is not a resource of {$this->walletAddressUrl}; not reading it."
             );
@@ -394,6 +399,30 @@ final class SdkOpenPaymentsClient implements OpenPaymentsInterface
             metadata: $payment->metadata ?? [],
             walletAddress: $payment->walletAddress,
         );
+    }
+
+    /**
+     * Whether two URLs share scheme, host and port, with https required on
+     * both sides. Open Payments is https throughout, so a plain-http URL is
+     * never one of ours however familiar the host looks.
+     */
+    private static function isSameOrigin(string $resourceServer, string $url): bool
+    {
+        $server = parse_url($resourceServer);
+        $candidate = parse_url($url);
+
+        if (!is_array($server) || !is_array($candidate)) {
+            return false;
+        }
+
+        foreach ([$server, $candidate] as $parts) {
+            if (strtolower((string) ($parts['scheme'] ?? '')) !== 'https' || ($parts['host'] ?? '') === '') {
+                return false;
+            }
+        }
+
+        return strtolower((string) $server['host']) === strtolower((string) $candidate['host'])
+            && ($server['port'] ?? 443) === ($candidate['port'] ?? 443);
     }
 
     private static function parseTimestamp(?string $timestamp): ?DateTimeImmutable

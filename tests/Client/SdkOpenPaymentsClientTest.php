@@ -132,11 +132,42 @@ final class SdkOpenPaymentsClientTest extends TestCase
     }
 
     /**
-     * The URL comes out of the order's record and the read carries the
-     * merchant's token, so a record that points at another host is refused
-     * before the token goes anywhere.
+     * Open Payments does not promise that an incoming payment lives under the
+     * advertised resource-server path, so a resource of the same wallet on
+     * another path is read — refusing it would strand a paid order.
      */
-    public function testAPaymentUrlOutsideThisWalletIsNotRead(): void
+    public function testAPaymentOnTheSameWalletButAnotherPathIsRead(): void
+    {
+        $this->expectGrant();
+        $this->incomingPayments->method('get')
+            ->willReturn(new IncomingPaymentWithPaymentMethods($this->fixture('incoming-payment-completed')));
+
+        $payment = $this->client()->incomingPayment('https://ilp.interledger-test.dev/incoming-payments/cc294351');
+
+        self::assertTrue($payment->hasReceived());
+    }
+
+    public function testAPaymentOnAnotherHostIsNotReadEvenOverHttps(): void
+    {
+        $this->expectRefusal('https://wallet.example.invalid/incoming-payments/cc294351');
+    }
+
+    public function testAPaymentOnTheRightHostOverPlainHttpIsNotRead(): void
+    {
+        $this->expectRefusal('http://ilp.interledger-test.dev/incoming-payments/cc294351');
+    }
+
+    public function testAPaymentOnTheRightHostButAnotherPortIsNotRead(): void
+    {
+        $this->expectRefusal('https://ilp.interledger-test.dev:8443/incoming-payments/cc294351');
+    }
+
+    /**
+     * The URL comes out of the order's record and the read carries the
+     * merchant's token, so anything that is not this wallet's own origin is
+     * refused before the token goes anywhere.
+     */
+    private function expectRefusal(string $url): void
     {
         $this->expectGrant();
         $this->incomingPayments->method('get')->willReturnCallback(static function (): never {
@@ -146,7 +177,7 @@ final class SdkOpenPaymentsClientTest extends TestCase
         $this->expectException(OpenPaymentsException::class);
         $this->expectExceptionMessageMatches('/not a resource of/');
 
-        $this->client()->incomingPayment('https://wallet.example.invalid/incoming-payments/cc294351');
+        $this->client()->incomingPayment($url);
     }
 
     public function testTheGrantIsAskedForOnceAndThenReused(): void
