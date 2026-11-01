@@ -192,15 +192,26 @@ switch ($step) {
         [$op, $config, $wallet] = $client('merchant');
         $url = $state['merchant']['incoming_payment_url'] ?? throw new RuntimeException('run merchant-request first');
         $completed = false;
+        $full = false;
         for ($i = 0; $i < 20; $i++) {
             $ip = $op->incomingPayment()->get(['url' => $url, 'access_token' => $state['merchant']['access_token']]);
             $log("received {$ip->receivedAmount->value}/{$ip->incomingAmount->value} {$ip->receivedAmount->assetCode} completed=" . var_export($ip->completed, true));
-            if ($ip->completed || $ip->receivedAmount->value >= $ip->incomingAmount->value) { $fixture('incoming-payment-completed', $ip); $completed = true; break; }
+            // `completed` is the resource server's own word for "this is finished", and the
+            // only thing the fixture may be named after. A full amount without it is worth
+            // knowing but is not the end state.
+            if ($ip->completed) { $fixture('incoming-payment-completed', $ip); $completed = true; break; }
+            $full = $full || $ip->receivedAmount->value >= $ip->incomingAmount->value;
             sleep(3);
         }
-        // A round trip that never arrived is not a successful run: say so with the exit code,
-        // or a demo looks like it worked because nothing complained.
-        if (!$completed) { throw new RuntimeException('the incoming payment did not complete within 20 polls'); }
+        // A round trip that did not finish is not a successful run: say so with the exit code,
+        // or a demo looks like it worked because nothing complained. The two cases are worth
+        // telling apart — money that arrived without the resource closing is a different
+        // problem from money that never arrived.
+        if (!$completed) {
+            throw new RuntimeException($full
+                ? 'the full amount arrived, but the incoming payment is not completed after 20 polls'
+                : 'the incoming payment did not complete within 20 polls');
+        }
         break;
 
     default:
