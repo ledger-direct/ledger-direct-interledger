@@ -1,0 +1,53 @@
+{
+    "name": "hardcastle/ledger-direct-interledger",
+    "description": "LedgerDirect for Interledger - accepts Open Payments incoming payments as a LedgerDirect chain",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "interledger",
+        "open-payments",
+        "ilp",
+        "dassie",
+        "payments",
+        "ecommerce"
+    ],
+    "authors": [
+        {
+            "name": "Alexander Busse",
+            "homepage": "https://www.ledger-direct.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "ext-sodium": "*",
+        "hardcastle/ledger-direct-core": "^0.10",
+        "interledger/open-payments-php": "^1.2",
+        "brick/math": "^0.12 || ^0.13 || ^0.14 || ^0.15 || ^0.16 || ^0.17 || ^0.18 || ^0.19 || ^0.20",
+        "psr/clock": "^1.0",
+        "psr/log": "^3.0",
+        "psr/simple-cache": "^3.0"
+    },
+    "require-dev": {
+        "nyholm/psr7": "^1.8",
+        "phpunit/phpunit": "^11.0 || ^12.0"
+    },
+    "suggest": {
+        "phpunit/phpunit": "Required by Hardcastle\\LedgerDirect\\Interledger\\Testing\\InterledgerRepositoryContractTestCase, the contract test for adapter repository implementations"
+    },
+    "autoload": {
+        "psr-4": {
+            "Hardcastle\\LedgerDirect\\Interledger\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Hardcastle\\LedgerDirect\\Interledger\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true
+    }
+}

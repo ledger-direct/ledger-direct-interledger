@@ -1,0 +1,19 @@
+{
+  "access_token": {
+    "value": "test-access-token",
+    "manage": "https://auth.interledger-test.dev/token/0199f0b0-0000-4000-8000-000000000001",
+    "expires_in": 600,
+    "access": [
+      {
+        "type": "incoming-payment",
+        "actions": ["create", "read", "complete", "list"]
+      }
+    ]
+  },
+  "continue": {
+    "access_token": {
+      "value": "test-continue-token"
+    },
+    "uri": "https://auth.interledger-test.dev/continue/0199f0b0-0000-4000-8000-000000000002"
+  }
+}
