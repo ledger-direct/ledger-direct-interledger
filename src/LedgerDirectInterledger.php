@@ -168,7 +168,7 @@ final class LedgerDirectInterledger
 
     public function receiptSyncService(): ReceiptSyncService
     {
-        return $this->receiptSyncService ??= new ReceiptSyncService($this->openPayments(), $this->logger);
+        return $this->receiptSyncService ??= new ReceiptSyncService($this->openPayments(), $this->logger, $this->cache);
     }
 
     public function settlementPolicy(): SettlementPolicy
