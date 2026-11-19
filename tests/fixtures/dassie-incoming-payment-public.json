@@ -1,0 +1,8 @@
+{
+    "receivedAmount": {
+        "value": "0",
+        "assetCode": "XRP",
+        "assetScale": 9
+    },
+    "authServer": "https://ihw5qnykc3qumkciobqodl6ha3hlzqbt3nn5pai.dassiepay.net/gnap"
+}

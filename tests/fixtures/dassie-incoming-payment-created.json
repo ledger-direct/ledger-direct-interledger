@@ -1,0 +1,28 @@
+{
+    "id": "https://ihw5qnykc3qumkciobqodl6ha3hlzqbt3nn5pai.dassiepay.net/incoming-payments/daa477f5-9df9-419f-a7ad-a2d7c11e4ddc",
+    "walletAddress": "https://ihw5qnykc3qumkciobqodl6ha3hlzqbt3nn5pai.dassiepay.net/pay/xrp",
+    "completed": false,
+    "incomingAmount": {
+        "value": "10000000",
+        "assetCode": "XRP",
+        "assetScale": 9
+    },
+    "receivedAmount": {
+        "value": "0",
+        "assetCode": "XRP",
+        "assetScale": 9
+    },
+    "expiresAt": "2026-11-19T06:43:11.075Z",
+    "metadata": {
+        "description": "LedgerDirect order 10001",
+        "externalRef": "LD-494349"
+    },
+    "createdAt": "2026-11-19T06:33:11.961Z",
+    "methods": [
+        {
+            "type": "ilp",
+            "ilpAddress": "test.das.a4xqmiimlotc5xuukvt3fqfj4itk2xfaaqs4j5a.ihw5qnykc3qumkciobqodl6ha3hlzqbt3nn5pai.stream-hub-xrpl-testnet-xrp.scrubbed-from-the-fixture",
+            "sharedSecret": "c2NydWJiZWQtZnJvbS10aGUtZml4dHVyZQ"
+        }
+    ]
+}

@@ -8,6 +8,7 @@ use Closure;
 use DateTimeImmutable;
 use DateTimeZone;
 use Hardcastle\LedgerDirect\Core\Clock\SystemClock;
+use Hardcastle\LedgerDirect\Interledger\Client\Sdk\SdkClient;
 use Hardcastle\LedgerDirect\Interledger\Credentials;
 use Hardcastle\LedgerDirect\Interledger\ScaledAmount;
 use OpenPayments\AuthClient;
@@ -25,7 +26,7 @@ use Throwable;
  * RFC 9421 request signatures and the Open Payments 1.4.0 routes, as the
  * SDK implements them.
  *
- * Two things here are not the SDK's and need saying:
+ * Four things here are not the SDK's and need saying:
  *
  * **The grant.** Creating and reading incoming payments on one's own
  * wallet is approved without owner interaction, so this class asks for
@@ -34,12 +35,24 @@ use Throwable;
  * the wallet is not configured as a client of its own address, and is
  * reported as such rather than retried.
  *
+ * **Who asks.** With credentials the wallet registered, the client is the
+ * wallet address, as before. With key-only credentials
+ * (Credentials::keyOnly()) the grant request carries the public key
+ * instead and names no address: the way a shop is a client of a Dassie
+ * node, which lists nobody's key but its own.
+ *
+ * **Two corrections to the SDK.** It writes the signature header without
+ * the colons of a byte sequence and appends a slash to the grant endpoint.
+ * Rafiki takes both, a Dassie node neither; Sdk\SdkClient sends what the
+ * specifications say, which both accept.
+ *
  * **No request timeout.** The SDK builds its Guzzle client inside the method
  * that sends the request and takes no options, so there is nothing to set a
  * timeout on from here: a wallet that accepts a connection and then goes
- * quiet holds the request until PHP's own limit. It is the reason the status
- * endpoint's read is behind the core's SyncThrottle and reads a failure as
- * "nothing has arrived yet". Fixing it properly means an option upstream.
+ * quiet holds the request until PHP's own limit. It is the reason an adapter
+ * holds the status endpoint's read back (see ReceiptSyncService) and reads a
+ * failure as "nothing has arrived yet". Fixing it properly means an option
+ * upstream.
  *
  * **Where the token is kept.** In the process by default, which costs one
  * extra grant request per web request. A payment page that polls every
@@ -88,7 +101,7 @@ final class SdkOpenPaymentsClient implements OpenPaymentsInterface
     ) {
         $this->clock = $clock ?? new SystemClock();
         $this->authClientFactory = $authClientFactory ?? static fn (string $url, Credentials $credentials): AuthClient
-            => new AuthClient(new Config($url, $credentials->privateKey, $credentials->keyId));
+            => new SdkClient(new Config($url, $credentials->privateKey, $credentials->keyId));
     }
 
     public function walletAddressUrl(): string
@@ -179,6 +192,13 @@ final class SdkOpenPaymentsClient implements OpenPaymentsInterface
 
     public function assertKeyRegistered(): void
     {
+        // A key-only client is registered nowhere, by design: its key travels in the grant
+        // request. There is no list to hold it against, and the wallet's own `jwks.json`
+        // (a Dassie node's lists the node's key) says nothing about it.
+        if ($this->credentials->isKeyOnly()) {
+            return;
+        }
+
         try {
             /*
              * A fresh client, not the memoised one: `jwks.json` is public, and the
@@ -248,7 +268,9 @@ final class SdkOpenPaymentsClient implements OpenPaymentsInterface
                         'type' => 'incoming-payment',
                         'actions' => self::INCOMING_PAYMENT_ACTIONS,
                     ]]],
-                    'client' => $this->walletAddressUrl,
+                    'client' => $this->credentials->isKeyOnly()
+                        ? ['jwk' => $this->credentials->publicJwk()]
+                        : $this->walletAddressUrl,
                 ],
             );
         } catch (Throwable $exception) {
@@ -258,8 +280,12 @@ final class SdkOpenPaymentsClient implements OpenPaymentsInterface
         if (!$grant instanceof Grant || $grant->access_token === null) {
             throw new OpenPaymentsException(
                 "The authorization server at {$wallet->authServer} wants owner interaction for an "
-                . 'incoming-payment grant. A merchant reading their own wallet must not need that — check that '
-                . "the configured key belongs to {$this->walletAddressUrl}."
+                . 'incoming-payment grant. '
+                . ($this->credentials->isKeyOnly()
+                    ? 'A client known by its key alone cannot be asked for that, so this wallet does not grant '
+                        . 'incoming payments to such a client; it needs a key the wallet registered.'
+                    : 'A merchant reading their own wallet must not need that — check that '
+                        . "the configured key belongs to {$this->walletAddressUrl}.")
             );
         }
 

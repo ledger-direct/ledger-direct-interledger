@@ -13,7 +13,9 @@ use Hardcastle\LedgerDirect\Interledger\Client\OpenPaymentsException;
 use Hardcastle\LedgerDirect\Interledger\Client\SdkOpenPaymentsClient;
 use Hardcastle\LedgerDirect\Interledger\Credentials;
 use Hardcastle\LedgerDirect\Interledger\ScaledAmount;
+use Hardcastle\LedgerDirect\Interledger\Tests\TestKey;
 use OpenPayments\AuthClient;
+use OpenPayments\Models\IncomingPayment as SdkPublicIncomingPayment;
 use OpenPayments\Models\IncomingPaymentWithPaymentMethods;
 use OpenPayments\Models\JsonWebKeySet;
 use OpenPayments\Models\WalletAddress as SdkWalletAddress;
@@ -41,6 +43,9 @@ final class SdkOpenPaymentsClientTest extends TestCase
     /** A resource of the wallet in the fixture, which is what the client will read. */
     private const INCOMING_PAYMENT = 'https://ilp.interledger-test.dev/f537937b-7016-481b-b655-9f0d1014822c'
         . '/incoming-payments/cc294351-d4e2-411e-ae25-14b5118c8776';
+
+    /** The node the Dassie fixtures were recorded from: a periphery node, reached through the default front door. */
+    private const DASSIE_NODE = 'https://ihw5qnykc3qumkciobqodl6ha3hlzqbt3nn5pai.dassiepay.net';
 
     private WalletAddressService $walletService;
 
@@ -242,6 +247,94 @@ final class SdkOpenPaymentsClientTest extends TestCase
         $this->expectNotToPerformAssertions();
     }
 
+    /**
+     * A shop at a Dassie node: the node's `jwks.json` lists the node's own key
+     * and nobody else's, so the shop is a client known by its key alone. The
+     * grant request then carries the public key and names no wallet address.
+     */
+    public function testAKeyOnlyClientSendsItsPublicKeyInsteadOfAWalletAddress(): void
+    {
+        $captured = null;
+        $this->grants->method('request')->willReturnCallback(function (array $params, array $body) use (&$captured): object {
+            $captured = ['params' => $params, 'body' => $body];
+
+            return (new GrantTransformer())->createFromResponse($this->fixture('dassie-incoming-payment-grant'));
+        });
+        $this->incomingPayments->method('create')
+            ->willReturn(new IncomingPaymentWithPaymentMethods($this->fixture('dassie-incoming-payment-created')));
+
+        $this->dassieClient()->createIncomingPayment(new ScaledAmount('10000000', 'XRP', 9), new DateTimeImmutable('@1790000900'), []);
+
+        self::assertNotNull($captured);
+        self::assertSame(self::DASSIE_NODE . '/gnap', $captured['params']['url'], 'the authorization server as the wallet address names it');
+        self::assertSame(['jwk' => Credentials::keyOnly(TestKey::base64Pem())->publicJwk()], $captured['body']['client']);
+        self::assertSame(TestKey::THUMBPRINT, $captured['body']['client']['jwk']['kid']);
+        (new \OpenPayments\Validators\GrantValidator())->validateRequest($captured['body']);
+    }
+
+    public function testAKeyOnlyClientHasNoKeyListToBeHeldAgainst(): void
+    {
+        $walletService = $this->createStub(WalletAddressService::class);
+        $walletService->method('getKeys')->willReturnCallback(static function (): never {
+            self::fail('a key-only client is registered nowhere; the wallet\'s keys are not its business');
+        });
+        $this->walletService = $walletService;
+
+        $this->dassieClient()->assertKeyRegistered();
+
+        $this->expectNotToPerformAssertions();
+    }
+
+    public function testAWalletThatWantsTheOwnerForAKeyOnlyClientIsReportedAsSuch(): void
+    {
+        $this->grants->method('request')->willReturn($this->createStub(\OpenPayments\Models\PendingGrant::class));
+
+        $this->expectException(OpenPaymentsException::class);
+        $this->expectExceptionMessageMatches('/known by its key alone/');
+
+        $this->dassieClient()->createIncomingPayment(new ScaledAmount('10000000', 'XRP', 9), new DateTimeImmutable('@1790000900'), []);
+    }
+
+    /**
+     * What a Dassie node answers, recorded from a node on 0.4.5: XRP at nine
+     * decimal places, a wallet address document with a `dassie` object the
+     * specification lets a client ignore, and an incoming payment without
+     * `updatedAt`.
+     */
+    public function testADassieNodesAnswersAreMapped(): void
+    {
+        $this->expectGrant();
+        $this->incomingPayments->method('create')
+            ->willReturn(new IncomingPaymentWithPaymentMethods($this->fixture('dassie-incoming-payment-created')));
+        $client = $this->dassieClient();
+
+        $wallet = $client->walletAddress();
+        self::assertSame('XRP', $wallet->assetCode);
+        self::assertSame(9, $wallet->assetScale);
+        self::assertSame(self::DASSIE_NODE, $wallet->resourceServer);
+
+        $payment = $client->createIncomingPayment(new ScaledAmount('10000000', 'XRP', 9), new DateTimeImmutable('@1790000900'), []);
+        self::assertSame(self::DASSIE_NODE . '/incoming-payments/daa477f5-9df9-419f-a7ad-a2d7c11e4ddc', $payment->url);
+        self::assertSame('0.010000000', $payment->incomingAmount?->decimal());
+        self::assertSame('0.000000000', $payment->receivedAmount?->decimal());
+        self::assertFalse($payment->hasReceived());
+        self::assertSame(494349, $payment->reference());
+        self::assertSame('2026-11-19T06:43:11.075Z', $payment->expiresAt?->format('Y-m-d\TH:i:s.v\Z'));
+    }
+
+    /** Without the `id` the answer is the public view: what has arrived, and nothing else. */
+    public function testADassieNodesPublicViewOfAPaymentCarriesTheReceivedAmount(): void
+    {
+        $this->expectGrant();
+        $this->incomingPayments->method('get')
+            ->willReturn(new SdkPublicIncomingPayment($this->fixture('dassie-incoming-payment-public')));
+
+        $payment = $this->dassieClient()->incomingPayment(self::DASSIE_NODE . '/incoming-payments/daa477f5-9df9-419f-a7ad-a2d7c11e4ddc');
+
+        self::assertSame('0.000000000', $payment->receivedAmount?->decimal());
+        self::assertFalse($payment->hasReceived());
+    }
+
     public function testAFailureFromTheSdkBecomesOneException(): void
     {
         $walletService = $this->createStub(WalletAddressService::class);
@@ -261,6 +354,25 @@ final class SdkOpenPaymentsClientTest extends TestCase
             Credentials::fromBase64Pem(self::KEY_ID, $this->privateKey()),
             new RecordingLogger(),
             $tokenCache,
+            $this->clock,
+            fn (): AuthClient => $this->authClient(),
+        );
+    }
+
+    private function dassieClient(): SdkOpenPaymentsClient
+    {
+        $walletService = $this->createStub(WalletAddressService::class);
+        $walletService->method('get')->willReturn(new SdkWalletAddress($this->fixture('dassie-wallet-address')));
+        $walletService->method('getKeys')->willReturnCallback(static function (): never {
+            self::fail('a key-only client does not read the wallet\'s keys');
+        });
+        $this->walletService = $walletService;
+
+        return new SdkOpenPaymentsClient(
+            self::DASSIE_NODE . '/pay/xrp',
+            Credentials::keyOnly(TestKey::base64Pem()),
+            new RecordingLogger(),
+            null,
             $this->clock,
             fn (): AuthClient => $this->authClient(),
         );

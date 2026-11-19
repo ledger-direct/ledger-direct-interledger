@@ -1,0 +1,24 @@
+{
+    "access_token": {
+        "value": "test-access-token",
+        "manage": "https://ihw5qnykc3qumkciobqodl6ha3hlzqbt3nn5pai.dassiepay.net/gnap/token/test-token-id",
+        "expires_in": 3600,
+        "access": [
+            {
+                "type": "incoming-payment",
+                "actions": [
+                    "create",
+                    "read",
+                    "complete",
+                    "list"
+                ]
+            }
+        ]
+    },
+    "continue": {
+        "access_token": {
+            "value": "test-continue-token"
+        },
+        "uri": "https://ihw5qnykc3qumkciobqodl6ha3hlzqbt3nn5pai.dassiepay.net/gnap/continue/00000000-0000-4000-8000-000000000000"
+    }
+}
