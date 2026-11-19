@@ -60,6 +60,15 @@ Schema v1 unchanged, with two fields read for what Interledger has instead of a 
 Everything downstream therefore works unchanged: `SettlementPolicy` judges an issued currency, `PaymentStatus`
 derives `waiting` / `partial` / `settled`, and every adapter reads the record it already reads.
 
+**A payment that is still arriving is not a partial payment.** An Interledger payment travels as a stream
+of packets and takes seconds, where a ledger transaction is there at once and whole. A read in those
+seconds finds less than was asked for. `ReceiptSyncService::findFulfillmentFor()` therefore reports an
+amount short of the request only once it stood still: it reads again two seconds later
+(`SETTLE_SECONDS`), reports the amount when it has not moved, the full amount when it is complete by
+then, and nothing while it is still growing. With a cache that lasts across requests an amount that stood
+still is remembered, so a real partial payment costs the wait once; without one every read of it waits.
+Nothing depends on the cache for being right.
+
 ## The pieces
 
 | Class | What it does |
