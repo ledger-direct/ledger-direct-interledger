@@ -1,0 +1,10 @@
+{
+    "id": "https://ihw5qnykc3qumkciobqodl6ha3hlzqbt3nn5pai.dassiepay.net/pay/xrp",
+    "assetCode": "XRP",
+    "assetScale": 9,
+    "authServer": "https://ihw5qnykc3qumkciobqodl6ha3hlzqbt3nn5pai.dassiepay.net/gnap",
+    "resourceServer": "https://ihw5qnykc3qumkciobqodl6ha3hlzqbt3nn5pai.dassiepay.net",
+    "dassie": {
+        "nodeId": "ihw5qnykc3qumkciobqodl6ha3hlzqbt3nn5pai"
+    }
+}

@@ -25,10 +25,15 @@ use Psr\Log\LoggerInterface;
  * and `sync()` has nothing to do, which it says out loud below.
  *
  * `findFulfillmentFor()` is what a status endpoint calls, named and shaped
- * like the core's so an adapter's matching code does not branch. The
- * core's SyncThrottle still applies and still works unchanged: it is keyed
- * by network and account, and one request per interval per wallet address
- * is exactly the right budget here too.
+ * like the core's so an adapter's matching code does not branch.
+ *
+ * **The throttle is the adapter's to place.** The core's SyncThrottle
+ * guards sync(), and sync() does nothing here: the request to the wallet
+ * is the one findFulfillmentFor() makes. An adapter that throttles sync()
+ * alone therefore holds back nothing over Interledger and asks the wallet
+ * on every status call. It has to hold findFulfillmentFor() back itself,
+ * with the same SyncThrottle and a mark per incoming payment (its URL as
+ * the account), so one order's page cannot hold back another's.
  */
 final class ReceiptSyncService implements LedgerSyncInterface
 {
