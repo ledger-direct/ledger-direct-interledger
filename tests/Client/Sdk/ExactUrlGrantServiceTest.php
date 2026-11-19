@@ -78,12 +78,16 @@ final class ExactUrlGrantServiceTest extends TestCase
 
     public function testARequestTheSchemaRefusesIsNotSent(): void
     {
+        $refused = false;
+
         try {
             $this->service([])->request(['url' => 'https://node.example/gnap'], ['access_token' => ['access' => [['type' => 'nonsense']]]]);
-            self::fail('the SDK\'s validator should have refused the request');
         } catch (\Throwable) {
-            self::assertSame([], $this->requests);
+            $refused = true;
         }
+
+        self::assertTrue($refused, 'the SDK\'s validator refuses the request');
+        self::assertSame([], $this->requests, 'and nothing went to the authorization server');
     }
 
     /** @param array<string, mixed> $answer */
